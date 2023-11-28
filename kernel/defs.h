@@ -63,6 +63,12 @@ void            ramdiskrw(struct buf*);
 void*           kalloc(void);
 void            kfree(void *);
 void            kinit(void);
+void            reflock_acquire(void);
+void            reflock_release(void);
+void            refcnt_set(uint64 pa, int n);
+int             refcnt_get(uint64 pa);
+void            refcnt_inc(uint64 pa);
+void            refcnt_dec(uint64 pa);
 
 // log.c
 void            initlog(int, struct superblock*);
@@ -80,7 +86,6 @@ int             pipewrite(struct pipe*, uint64, int);
 void            printf(char*, ...);
 void            panic(char*) __attribute__((noreturn));
 void            printfinit(void);
-void            backtrace(void);
 
 // proc.c
 int             cpuid(void);
@@ -166,6 +171,7 @@ void            uvmfirst(pagetable_t, uchar *, uint);
 uint64          uvmalloc(pagetable_t, uint64, uint64, int);
 uint64          uvmdealloc(pagetable_t, uint64, uint64);
 int             uvmcopy(pagetable_t, pagetable_t, uint64);
+int             cowmmcopy(uint64 va);
 void            uvmfree(pagetable_t, uint64);
 void            uvmunmap(pagetable_t, uint64, uint64, int);
 void            uvmclear(pagetable_t, uint64);

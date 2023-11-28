@@ -76,21 +76,23 @@ copyin(char *s)
 void
 copyout(char *s)
 {
-  uint64 addrs[] = { 0LL, 0x80000000LL, 0xffffffffffffffff };
-
+  uint64 addrs[] = { 0x80000000LL, 0LL, 0xffffffffffffffff };
+  printf("\n");
   for(int ai = 0; ai < 2; ai++){
     uint64 addr = addrs[ai];
-
+    printf("in loop...\n");
     int fd = open("README", 0);
     if(fd < 0){
       printf("open(README) failed\n");
       exit(1);
     }
+    printf("done 1\n");
     int n = read(fd, (void*)addr, 8192);
     if(n > 0){
       printf("read(fd, %p, 8192) returned %d, not -1 or 0\n", addr, n);
       exit(1);
     }
+    printf("done 2\n");
     close(fd);
 
     int fds[2];
@@ -2575,8 +2577,8 @@ struct test {
   void (*f)(char *);
   char *s;
 } quicktests[] = {
-  {copyin, "copyin"},
   {copyout, "copyout"},
+  {copyin, "copyin"},
   {copyinstr1, "copyinstr1"},
   {copyinstr2, "copyinstr2"},
   {copyinstr3, "copyinstr3"},

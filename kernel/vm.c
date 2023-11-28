@@ -5,6 +5,9 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+#include "spinlock.h"
+#include "proc.h"
+
 
 /*
  * the kernel's page table.
@@ -136,9 +139,8 @@ kvmmap(pagetable_t kpgtbl, uint64 va, uint64 pa, uint64 sz, int perm)
 }
 
 // Create PTEs for virtual addresses starting at va that refer to
-// physical addresses starting at pa.
-// va and size MUST be page-aligned.
-// Returns 0 on success, -1 if walk() couldn't
+// physical addresses starting at pa. va and size might not
+// be page-aligned. Returns 0 on success, -1 if walk() couldn't
 // allocate a needed page-table page.
 int
 mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
@@ -146,22 +148,16 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
   uint64 a, last;
   pte_t *pte;
 
-  if((va % PGSIZE) != 0)
-    panic("mappages: va not aligned");
-
-  if((size % PGSIZE) != 0)
-    panic("mappages: size not aligned");
-
   if(size == 0)
     panic("mappages: size");
   
-  a = va;
-  last = va + size - PGSIZE;
+  a = PGROUNDDOWN(va);
+  last = PGROUNDDOWN(va + size - 1);
   for(;;){
     if((pte = walk(pagetable, a, 1)) == 0)
       return -1;
-    if(*pte & PTE_V)
-      panic("mappages: remap");
+    /*if(*pte & PTE_V)
+      panic("mappages: remap");*/
     *pte = PA2PTE(pa) | perm | PTE_V;
     if(a == last)
       break;
@@ -315,28 +311,71 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
+  //char *mem;
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
       panic("uvmcopy: pte should exist");
     if((*pte & PTE_V) == 0)
       panic("uvmcopy: page not present");
+    (*pte) = ((*pte) & (~PTE_W)) | PTE_RSW;
     pa = PTE2PA(*pte);
-    flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
+    flags = (PTE_FLAGS(*pte) & (~PTE_W)) | PTE_RSW;
+    *pte = ((*pte) & (~PTE_W)) | PTE_RSW;
+
+    if(mappages(new, i, PGSIZE, pa, flags) != 0){
       goto err;
     }
+    reflock_acquire();
+    refcnt_inc(pa);
+    reflock_release();
   }
   return 0;
 
  err:
   uvmunmap(new, 0, i / PGSIZE, 1);
   return -1;
+}
+
+// implement cow copy
+int cowmmcopy(uint64 va)
+{
+  va = PGROUNDDOWN(va);
+  pagetable_t p = myproc()->pagetable;
+  if(va >= MAXVA){
+      printf("va out of range.\n");
+      return -1;
+    }
+  pte_t* pte = walk(p, va, 0);
+  char* mem;
+  uint64 pa = PTE2PA(*pte);
+  uint flags = (PTE_FLAGS(*pte) & (~PTE_RSW)) | PTE_W;
+
+  if((*pte) & PTE_RSW){
+    //copy on write
+    reflock_acquire();
+    if(refcnt_get(pa) == 1){
+      (*pte) = ((*pte) & (~PTE_RSW)) | PTE_W;
+      reflock_release();
+      return 0;
+    }
+    refcnt_dec(pa);
+    reflock_release();
+    if((mem = kalloc()) == 0){
+      printf("kalloc failed.\n");
+      return -1;
+    }
+    memmove(mem, (char*)pa, PGSIZE);
+    if(mappages(p, va, PGSIZE, (uint64)mem, flags) != 0){
+      kfree(mem);
+      return -1;
+    }
+  }
+  else{
+    printf("page fault, but not cow.\n");
+    return 1;
+  }
+  return 0;
 }
 
 // mark a PTE invalid for user access.
@@ -357,24 +396,49 @@ uvmclear(pagetable_t pagetable, uint64 va)
 // Return 0 on success, -1 on error.
 int
 copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
-{
-  uint64 n, va0, pa0;
-  pte_t *pte;
-
+{ 
+  uint64 n, va0, pa0, flags;
+  char* mem;
+  pte_t* pte;
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
-    if(va0 >= MAXVA)
+    pa0 = walkaddr(pagetable, va0);
+    if(pa0 == 0|| dstva == 0LL)
       return -1;
+    if(va0 >= MAXVA){
+      printf("va out of range.\n");
+      return -1;
+    }
     pte = walk(pagetable, va0, 0);
-    if(pte == 0 || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0 ||
-       (*pte & PTE_W) == 0)
-      return -1;
-    pa0 = PTE2PA(*pte);
+    //cow page
+    if((*pte) & PTE_RSW){
+      reflock_acquire();
+      if(refcnt_get(pa0) == 1){
+        (*pte) = ((*pte) & (~PTE_RSW)) | PTE_W;
+        reflock_release();
+      }
+      else{
+        refcnt_dec(pa0);
+        reflock_release();
+        if((mem = kalloc()) == 0){
+          printf("kalloc failed.\n");
+          return -1;
+        }
+        memmove(mem, (char*)pa0, PGSIZE);
+        flags = (PTE_FLAGS(*pte) & (~PTE_RSW)) | PTE_W;
+
+        if(mappages(pagetable, va0, PGSIZE, (uint64)mem, flags) != 0){
+          kfree(mem);
+          return -1;
+        }
+        pa0 = (uint64)mem;
+      }
+    }
     n = PGSIZE - (dstva - va0);
     if(n > len)
       n = len;
     memmove((void *)(pa0 + (dstva - va0)), src, n);
-
+    //printf("here3, length: %d, after: %d\n", len, len-n);
     len -= n;
     src += n;
     dstva = va0 + PGSIZE;

@@ -53,7 +53,7 @@ sys_sleep(void)
 {
   int n;
   uint ticks0;
-  backtrace();
+
   argint(0, &n);
   if(n < 0)
     n = 0;
@@ -90,29 +90,4 @@ sys_uptime(void)
   xticks = ticks;
   release(&tickslock);
   return xticks;
-}
-
-uint64
-sys_sigalarm(void)
-{
-  int alarm_num;
-  uint64 alarm_handler;
-  argint(0, &alarm_num);
-  argaddr(1, &alarm_handler);
-
-  struct proc *p =myproc();
-  p->alarm_interval = alarm_num;
-  p->alarm_handler = alarm_handler;
-  return 0;
-}
-
-uint64
-sys_sigreturn(void)
-{
-  struct proc *p = myproc();
-  // Restore the state before the handler was executed, but note that a0 will change when returned.
-  memmove(p->trapframe, p->alarm_frame, sizeof(struct trapframe));
-  p->alarm_ticks = 0;
-  p->alarm_wait = 2;
-  return 0;
 }
