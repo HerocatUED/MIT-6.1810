@@ -101,13 +101,8 @@ extern uint64 sys_unlink(void);
 extern uint64 sys_link(void);
 extern uint64 sys_mkdir(void);
 extern uint64 sys_close(void);
-
-#ifdef LAB_NET
-extern uint64 sys_connect(void);
-#endif
-#ifdef LAB_PGTBL
-extern uint64 sys_pgaccess(void);
-#endif
+extern uint64 sys_sigalarm(void);
+extern uint64 sys_sigreturn(void);
 
 // An array mapping syscall numbers from syscall.h
 // to the function that handles the system call.
@@ -133,15 +128,9 @@ static uint64 (*syscalls[])(void) = {
 [SYS_link]    sys_link,
 [SYS_mkdir]   sys_mkdir,
 [SYS_close]   sys_close,
-#ifdef LAB_NET
-[SYS_connect] sys_connect,
-#endif
-#ifdef LAB_PGTBL
-[SYS_pgaccess] sys_pgaccess,
-#endif
+[SYS_sigalarm]   sys_sigalarm,
+[SYS_sigreturn]   sys_sigreturn,
 };
-
-
 
 void
 syscall(void)

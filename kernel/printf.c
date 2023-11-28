@@ -115,10 +115,26 @@ printf(char *fmt, ...)
     release(&pr.lock);
 }
 
+// FUnction from lab3 traps.
+// backtrace() will need a way to recognize that it has seen the last stack frame, and should stop. A useful fact is that the memory allocated for each kernel stack consists of a single page-aligned page, so that all the stack frames for a given stack are on the same page. You can use PGROUNDDOWN(fp) (see kernel/riscv.h) to identify the page that a frame pointer refers to.
+void backtrace(void)
+{
+  printf("backtrace: \n");
+  uint64 fp = r_fp();
+  uint64 pagenum = PGROUNDDOWN(fp);
+  while(PGROUNDDOWN(fp) == pagenum){
+    //Note that the return address lives at a fixed offset (-8) from the frame pointer of a stackframe, and that the saved frame pointer lives at fixed offset (-16) from the frame pointer.
+    printf("%p\n", *(uint64 *)(fp - 8));
+    fp = *(uint64 *)(fp - 16);
+  }
+  return;
+}
+
 void
 panic(char *s)
 {
   pr.locking = 0;
+  backtrace();
   printf("panic: ");
   printf(s);
   printf("\n");

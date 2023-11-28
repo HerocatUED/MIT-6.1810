@@ -77,9 +77,25 @@ usertrap(void)
     exit(-1);
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
+  // only want to manipulate a process's alarm ticks if there's a timer interrupt.
+ if(which_dev == 2 && p->alarm_wait == 0){
+    if(p->alarm_interval != 0)// If an application calls sigalarm(0, 0), the kernel should stop generating periodic alarm calls.
+    {
+      ++(p->alarm_ticks);
+      if(p->alarm_ticks >= p->alarm_interval){
+        memmove(p->alarm_frame, p->trapframe, sizeof(struct trapframe)); // store status
+        p->trapframe->epc = p->alarm_handler; //change user program counter to handler function
+        p->alarm_wait = 1; // Prevent re-entrant calls to the handler----if a handler hasn't returned yet, the kernel shouldn't call it again.
+      }
+    }
     yield();
+  }
 
+  // return from sigreturn call
+  if(p->alarm_wait == 2){
+    p->alarm_wait = 0;// clear wait bit
+    p->trapframe->a0 = p->alarm_frame->a0;// restore a0, sigreturn is a system call, and its return value is stored in a0.
+  }
   usertrapret();
 }
 

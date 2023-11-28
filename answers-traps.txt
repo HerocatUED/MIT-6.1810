@@ -1,0 +1,39 @@
+Q1: Which registers contain arguments to functions? 
+For example, which register holds 13 in main's call to printf?
+A1:
+a0-a7 contain arguments to functions.
+a2 holds 13 in main's call to printf.
+
+Q2: Where is the call to function f in the assembly code for main? 
+Where is the call to g? (Hint: the compiler may inline functions.)
+A2:
+There is no such code. g is inlined into f, which in turn is further inlined into main(). 
+So what you see is not a function calling, but an optimized inline function.
+
+Q3: At what address is the function printf located?
+A3: 0x0000000000000630
+
+Q4: What value is in the register ra just after the jalr to printf in main?
+A4: 0x38(ra=pc+4). 
+The jalr instruction assigns pc + 4 to the current register, which is exactly the address of its next instruction.
+
+Q5: Run the following code.
+	unsigned int i = 0x00646c72;
+	printf("H%x Wo%s", 57616, &i);     
+What is the output? The output depends on that fact that the RISC-V is little-endian. 
+If the RISC-V were instead big-endian what would you set i to in order to yield the same output? 
+Would you need to change 57616 to a different value?
+A5:  He110 World, 0x726c6400, no change for 57616.
+%x represents the output of integers as hexadecimal numbers, and the hexadecimal representation of 57616 is e110, independent of the size and end order. 
+%s is the output string, which reads in the format of the character at the beginning address where the integer i is located until it reads '\0'. 
+When it is a little-endian representation, the number stored in memory is: 72 6c 64 00, which corresponds to RLD. 
+In the case of big-endian, it's reversed, so i needs to be reversed as a hexadecimal number.
+
+Q6: In the following code,
+	printf("x=%d y=%d", 3);
+What is going to be printed after 'y='?
+Why does this happen?
+A6: print the value of a2 register.
+printf receives two parameters, but actually needs three.
+The last parameter is placed in the A2 register. 
+Since there is no third parameter input, what is currently in the A2 register is output.

@@ -91,6 +91,11 @@ struct proc {
   int killed;                  // If non-zero, have been killed
   int xstate;                  // Exit status to be returned to parent's wait
   int pid;                     // Process ID
+  int alarm_interval;          // alarm interval
+  uint64 alarm_handler;        // pointer to the alarm handler function
+  int alarm_ticks;             // number of ticks since last alarm handler was called
+  int alarm_wait;              // Prevent re-entry to the alarm handler
+  struct trapframe *alarm_frame;// Store the original trapframe to restore the state before the handler was executed
 
   // wait_lock must be held when using this:
   struct proc *parent;         // Parent process
@@ -100,7 +105,6 @@ struct proc {
   uint64 sz;                   // Size of process memory (bytes)
   pagetable_t pagetable;       // User page table
   struct trapframe *trapframe; // data page for trampoline.S
-  struct usyscall *usyscall;   // pid for process syscall
   struct context context;      // swtch() here to run process
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory

@@ -1,7 +1,7 @@
 #include "types.h"
 #include "riscv.h"
-#include "param.h"
 #include "defs.h"
+#include "param.h"
 #include "memlayout.h"
 #include "spinlock.h"
 #include "proc.h"
@@ -53,9 +53,10 @@ sys_sleep(void)
 {
   int n;
   uint ticks0;
-
-
+  backtrace();
   argint(0, &n);
+  if(n < 0)
+    n = 0;
   acquire(&tickslock);
   ticks0 = ticks;
   while(ticks - ticks0 < n){
@@ -68,28 +69,6 @@ sys_sleep(void)
   release(&tickslock);
   return 0;
 }
-
-
-#ifdef LAB_PGTBL
-int
-sys_pgaccess(void)
-{
-  // lab pgtbl: your code here.
-  uint64 va, ans; // virtual address, address to sent answer
-  int pgnum, max_pgnum=128;
-  // parse arguments
-  argaddr(0, &va);
-  argint(1, &pgnum);
-  argaddr(2, &ans);
-  // limit maximum num
-  if(pgnum > max_pgnum){
-    printf("pagenum too large! maximum %d pages that can be scanned!", max_pgnum);
-  }
-  // call pgaccess function
-  pgaccess(va, pgnum, ans);
-  return 0;
-}
-#endif
 
 uint64
 sys_kill(void)
@@ -111,4 +90,29 @@ sys_uptime(void)
   xticks = ticks;
   release(&tickslock);
   return xticks;
+}
+
+uint64
+sys_sigalarm(void)
+{
+  int alarm_num;
+  uint64 alarm_handler;
+  argint(0, &alarm_num);
+  argaddr(1, &alarm_handler);
+
+  struct proc *p =myproc();
+  p->alarm_interval = alarm_num;
+  p->alarm_handler = alarm_handler;
+  return 0;
+}
+
+uint64
+sys_sigreturn(void)
+{
+  struct proc *p = myproc();
+  // Restore the state before the handler was executed, but note that a0 will change when returned.
+  memmove(p->trapframe, p->alarm_frame, sizeof(struct trapframe));
+  p->alarm_ticks = 0;
+  p->alarm_wait = 2;
+  return 0;
 }

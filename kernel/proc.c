@@ -124,17 +124,20 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = USED;
+  p->alarm_ticks = 0;
+  p->alarm_interval = 0;
+  p->alarm_wait = 0;
+  p->alarm_handler = 0;
 
-  // Allocate a trapframe page.
-  if((p->trapframe = (struct trapframe *)kalloc()) == 0){
+  // Allocate a alarmframe page.
+  if((p->alarm_frame = (struct trapframe *)kalloc()) == 0){
     freeproc(p);
     release(&p->lock);
     return 0;
   }
 
-  // Allocate a speed up syscall page
-  // use usyscall to save the pid
-  if((p->usyscall = (struct usyscall *)kalloc()) == 0){
+  // Allocate a trapframe page.
+  if((p->trapframe = (struct trapframe *)kalloc()) == 0){
     freeproc(p);
     release(&p->lock);
     return 0;
@@ -153,8 +156,7 @@ found:
   memset(&p->context, 0, sizeof(p->context));
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
-  // save pid 
-  p->usyscall->pid = p->pid;
+
   return p;
 }
 
@@ -167,9 +169,6 @@ freeproc(struct proc *p)
   if(p->trapframe)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
-  if(p->usyscall)
-    kfree((void*)p->usyscall);
-  p->usyscall = 0;
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
   p->pagetable = 0;
@@ -181,6 +180,13 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+  p->alarm_handler = 0;
+  p->alarm_interval = 0;
+  p->alarm_ticks = 0;
+  p->alarm_wait = 0;
+  if(p->alarm_frame)
+    kfree((void*)p->alarm_frame);
+  p->alarm_frame = 0;
 }
 
 // Create a user page table for a given process, with no user memory,
@@ -214,15 +220,6 @@ proc_pagetable(struct proc *p)
     return 0;
   }
 
-  // map one read-only page at USYSCALL
-  if(mappages(pagetable, USYSCALL, PGSIZE,
-              (uint64)(p->usyscall), PTE_R | PTE_U) < 0){
-    uvmunmap(pagetable, TRAMPOLINE, 1, 0);
-    uvmunmap(pagetable, TRAPFRAME, 1, 0);
-    uvmfree(pagetable, 0);
-    return 0;
-  }
-
   return pagetable;
 }
 
@@ -233,7 +230,6 @@ proc_freepagetable(pagetable_t pagetable, uint64 sz)
 {
   uvmunmap(pagetable, TRAMPOLINE, 1, 0);
   uvmunmap(pagetable, TRAPFRAME, 1, 0);
-  uvmunmap(pagetable, USYSCALL, 1, 0);
   uvmfree(pagetable, sz);
 }
 
@@ -707,27 +703,4 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
-}
-
-void
-pgaccess(uint64 va, int pgnum, uint64 ans){
-  uint64 bitmap = 0;
-  // get pagetable
-  pagetable_t pagetable = myproc()->pagetable;
-  // count
-  for(int i=0; i<pgnum; i++){
-    pte_t *pte = walk(pagetable, va, 0);
-    if(pte != 0 && (*pte & PTE_A)){
-      bitmap |= (1<<i);
-      // clear PTE_A after cheking if it is set
-      // Otherwise, it wont't be possible to determine if the page was accessed
-      // because the pgaccess() was called and page wil be accessed
-      // (the PTE_A bit will be set forever)
-      (*pte) = ((*pte) & (~PTE_A)); // ~ puts 1 to 0 and 0 to 1 bit-wise
-    }
-    va += PGSIZE;
-  }
-  // copy the answer to the user 
-  copyout(pagetable, ans, (char*)&bitmap, sizeof(bitmap));
-
 }
