@@ -1,11 +1,10 @@
 #include "types.h"
 #include "riscv.h"
-#include "defs.h"
 #include "param.h"
+#include "defs.h"
 #include "memlayout.h"
 #include "spinlock.h"
 #include "proc.h"
-#include "sysinfo.h"
 
 uint64
 sys_exit(void)
@@ -55,9 +54,8 @@ sys_sleep(void)
   int n;
   uint ticks0;
 
+
   argint(0, &n);
-  if(n < 0)
-    n = 0;
   acquire(&tickslock);
   ticks0 = ticks;
   while(ticks - ticks0 < n){
@@ -70,6 +68,28 @@ sys_sleep(void)
   release(&tickslock);
   return 0;
 }
+
+
+#ifdef LAB_PGTBL
+int
+sys_pgaccess(void)
+{
+  // lab pgtbl: your code here.
+  uint64 va, ans; // virtual address, address to sent answer
+  int pgnum, max_pgnum=128;
+  // parse arguments
+  argaddr(0, &va);
+  argint(1, &pgnum);
+  argaddr(2, &ans);
+  // limit maximum num
+  if(pgnum > max_pgnum){
+    printf("pagenum too large! maximum %d pages that can be scanned!", max_pgnum);
+  }
+  // call pgaccess function
+  pgaccess(va, pgnum, ans);
+  return 0;
+}
+#endif
 
 uint64
 sys_kill(void)
@@ -91,31 +111,4 @@ sys_uptime(void)
   xticks = ticks;
   release(&tickslock);
   return xticks;
-}
-
-
-uint64
-sys_trace(void)
-{
-  int n;
-  struct proc *p = myproc();
-  argint(0, &n); 
-  p->trace_mask = n;
-  return 0;
-}
-
-
-uint64
-sys_sysinfo(void)
-{
-  uint64 addr; // user pointer to struct info
-
-  argaddr(0, &addr);
-  struct sysinfo i;
-  i.freemem = freemem_cnt();
-  i.nproc = proc_cnt();
-
-  if(copyout(myproc()->pagetable, addr, (char*)&i, sizeof(i)) < 0)
-    return -1;
-  return 0;
 }

@@ -1,0 +1,15 @@
+Q1: Which other xv6 system call(s) could be made faster using this shared page? Explain how.
+A1: 
+We can speed up fork() by adding parent data to struct usyscall, so that children can use the shared page directly in user mode when they need it, instead of switching to kernel mode.
+
+Q2: For every leaf page in the vmprint output, explain what it logically contains and what its permission bits are. Figure 3.4 in the xv6 book might be helpful, although note that the figure might have a slightly different set of pages than the init process that's being inspected here.
+A2: 
+page0 contains date and text of process. 
+page1 contains guard page for protect stack by present page0 overflow.
+page2 contains stack of process.
+page3 to last page contain heap, trapfram, trampoline.
+Their permission bits(in the order as [U,X,W,R]):
+page0 1101
+page1 1011
+page2 0011
+page3 1011
