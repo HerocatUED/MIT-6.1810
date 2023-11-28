@@ -1,0 +1,24 @@
+Q1: Looking at the backtrace output, which function called syscall?
+usertrap() called syscall at kernel/trap.c:67.
+
+Q2: What is the value of p->trapframe->a7 and what does that value represent?
+The system call number that is set when the user program is stuck in the kernel.
+
+Q3: What was the previous mode that the CPU was in?
+User mode.
+
+Q4: Write down the assembly instruction the kernel is panicing at. Which register corresponds to the variable num?
+a3
+
+Q5: 
+Why does the kernel crash? 
+Is address 0 mapped in the kernel address space? 
+Is that confirmed by the value in scause above? 
+A:
+$'lw a3,0(zero)' tries to assign a word at address 0 to a3, which is obviously an illegal address, so an error occurs.
+In the kernel's virtual address space, address 0 is not used, so address 0 is an invalid address.
+13 is a loading page error, so scause can validate our conjecture.
+
+
+Q6: What is the name of the binary that was running when the kernel paniced? What is its process id (pid)?
+The name is 'initcode' and the pid is 1.

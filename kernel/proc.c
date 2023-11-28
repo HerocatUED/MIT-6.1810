@@ -296,6 +296,10 @@ fork(void)
   }
   np->sz = p->sz;
 
+
+  // copy trace mask.
+  np->trace_mask = p->trace_mask;
+
   // copy saved user registers.
   *(np->trapframe) = *(p->trapframe);
 
@@ -685,4 +689,18 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+}
+
+// Count the number of process whose state is not UNUSED.
+int proc_cnt(void)
+{
+  struct proc *p;
+  int cnt = 0;
+
+  for(p = proc; p < &proc[NPROC]; p++){
+    acquire(&p->lock);
+    if(p->state != UNUSED) ++cnt; 
+    release(&p->lock);
+  }
+  return cnt;
 }
