@@ -174,6 +174,7 @@ mkfs/mkfs: mkfs/mkfs.c $K/fs.h $K/param.h
 UPROGS=\
 	$U/_cat\
 	$U/_echo\
+	$U/_find\
 	$U/_forktest\
 	$U/_grep\
 	$U/_init\
@@ -181,12 +182,16 @@ UPROGS=\
 	$U/_ln\
 	$U/_ls\
 	$U/_mkdir\
+	$U/_pingpong\
+	$U/_primes\
 	$U/_rm\
 	$U/_sh\
+	$U/_sleep\
 	$U/_stressfs\
 	$U/_usertests\
 	$U/_grind\
 	$U/_wc\
+	$U/_xargs\
 	$U/_zombie\
 
 
@@ -265,12 +270,14 @@ fs.img: mkfs/mkfs README $(UEXTRA) $(UPROGS)
 
 -include kernel/*.d user/*.d
 
-clean:
-	rm -rf *.tex *.dvi *.idx *.aux *.log *.ind *.ilg *.dSYM *.zip \
+clean: 
+	rm -f *.tex *.dvi *.idx *.aux *.log *.ind *.ilg \
 	*/*.o */*.d */*.asm */*.sym \
-	$U/initcode $U/initcode.out $U/usys.S $U/_* \
-	$K/kernel \
-	mkfs/mkfs fs.img .gdbinit __pycache__ xv6.out* \
+	$U/initcode $U/initcode.out $K/kernel fs.img \
+	mkfs/mkfs .gdbinit \
+        $U/usys.S \
+	$(UPROGS) \
+	*.zip \
 	ph barrier
 
 # try to generate a unique GDB port
