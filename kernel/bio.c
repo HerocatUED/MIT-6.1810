@@ -66,10 +66,9 @@ static struct buf*
 bget(uint dev, uint blockno)
 {
   struct buf *b;
-
   int h = hash(blockno);
-  acquire(&bcache.lock[h]);
 
+  acquire(&bcache.lock[h]);
   // Is the block already cached?
   for(b = bcache.hashtable[h].next; b != 0; b = b->next){
     if(b->dev == dev && b->blockno == blockno){
@@ -110,6 +109,12 @@ bget(uint dev, uint blockno)
   if(minbuf != 0){
     prevminbuf->next = minbuf->next; // pop minbuf from hashtable-list
     release(&bcache.lock[max_bucket]);
+  }
+
+  acquire(&bcache.lock[h]);
+  if (minbuf != 0){
+    minbuf->next = bcache.hashtable[h].next;
+    bcache.hashtable[h].next = minbuf;
   }
 
   // A didn't find in line 76-83, but find here because B create it.
