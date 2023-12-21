@@ -136,9 +136,8 @@ kvmmap(pagetable_t kpgtbl, uint64 va, uint64 pa, uint64 sz, int perm)
 }
 
 // Create PTEs for virtual addresses starting at va that refer to
-// physical addresses starting at pa.
-// va and size MUST be page-aligned.
-// Returns 0 on success, -1 if walk() couldn't
+// physical addresses starting at pa. va and size might not
+// be page-aligned. Returns 0 on success, -1 if walk() couldn't
 // allocate a needed page-table page.
 int
 mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
@@ -146,17 +145,11 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
   uint64 a, last;
   pte_t *pte;
 
-  if((va % PGSIZE) != 0)
-    panic("mappages: va not aligned");
-
-  if((size % PGSIZE) != 0)
-    panic("mappages: size not aligned");
-
   if(size == 0)
     panic("mappages: size");
   
-  a = va;
-  last = va + size - PGSIZE;
+  a = PGROUNDDOWN(va);
+  last = PGROUNDDOWN(va + size - 1);
   for(;;){
     if((pte = walk(pagetable, a, 1)) == 0)
       return -1;
@@ -187,7 +180,7 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
     if((pte = walk(pagetable, a, 0)) == 0)
       panic("uvmunmap: walk");
     if((*pte & PTE_V) == 0)
-      panic("uvmunmap: not mapped");
+      continue;
     if(PTE_FLAGS(*pte) == PTE_V)
       panic("uvmunmap: not a leaf");
     if(do_free){
@@ -321,7 +314,8 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     if((pte = walk(old, i, 0)) == 0)
       panic("uvmcopy: pte should exist");
     if((*pte & PTE_V) == 0)
-      panic("uvmcopy: page not present");
+      //panic("uvmcopy: page not present");
+      continue;
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
     if((mem = kalloc()) == 0)
@@ -359,17 +353,12 @@ int
 copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 {
   uint64 n, va0, pa0;
-  pte_t *pte;
 
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
-    if(va0 >= MAXVA)
+    pa0 = walkaddr(pagetable, va0);
+    if(pa0 == 0 || dstva == 0LL)
       return -1;
-    pte = walk(pagetable, va0, 0);
-    if(pte == 0 || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0 ||
-       (*pte & PTE_W) == 0)
-      return -1;
-    pa0 = PTE2PA(*pte);
     n = PGSIZE - (dstva - va0);
     if(n > len)
       n = len;

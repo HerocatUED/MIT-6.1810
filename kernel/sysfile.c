@@ -503,3 +503,100 @@ sys_pipe(void)
   }
   return 0;
 }
+
+uint64
+sys_mmap(void)
+{
+  uint64 addr;
+  int length, prot, flags;
+  int fd, offset;
+  struct file *file;
+  struct proc* p = myproc();
+
+  argaddr(0, &addr);
+  argint(1, &length);
+  argint(2, &prot);
+  argint(3, &flags);
+  argfd(4, &fd, &file);
+  argint(5, &offset);
+  //printf("here0\n");
+
+  if(!file->writable && (prot & PROT_WRITE) && flags == MAP_SHARED)
+    return -1;
+  
+  length = PGROUNDUP(length);
+  if(p->sz > MAXVA - length)
+    return -1;
+
+  for(int i=0; i<MAXVMA; i++){
+    if(p->vma[i].used == 0){
+      p->vma[i].used = 1;
+      p->vma[i].addr = p->sz;
+      p->vma[i].length = length;
+      p->vma[i].prot = prot;
+      p->vma[i].flags = flags;
+      p->vma[i].fd = fd;
+      p->vma[i].offset = offset;
+      p->vma[i].file = file;
+      filedup(file);
+      p->sz += length;
+      return p->vma[i].addr;
+    }
+  }
+  return 0;
+}
+
+uint64
+sys_munmap(void)
+{
+  uint64 addr;
+  int length;
+  struct vma* vma = 0;
+  struct proc* p = myproc();
+
+  argaddr(0, &addr);
+  argint(1, &length);
+
+  addr = PGROUNDDOWN(addr);
+  length = PGROUNDUP(length);
+  for(int i=0; i<MAXVMA; i++){
+    if(p->vma[i].used == 1 && addr >= p->vma[i].addr && addr <= p->vma[i].addr + p->vma[i].length){
+      vma = &p->vma[i];
+      break;
+    }
+  }
+  if(vma == 0) return -1;
+
+  pte_t *pte = walk(p->pagetable, addr, 0);
+  uint64 pa;
+
+  if(pte == 0) return -1;
+  pa = walkaddr(p->pagetable, addr);
+  if(pa != 0){
+    if(vma->flags & MAP_SHARED && vma->file->writable != 0){
+      if(filewrite(vma->file, addr, length) == -1){
+        printf("filewrite fault.\n");
+        return -1;
+      }
+    }
+    uvmunmap(p->pagetable, addr, length / PGSIZE, 1);
+  }
+  
+  if(addr + length > vma->addr + vma->length){
+    printf("munmap out of range.\n");
+    return -1;
+  }
+  if(addr == vma->addr){
+    vma->addr += length;
+    vma->length -= length;
+  }
+  else if(addr + length == vma->addr + vma->length){
+    vma->length -= length;
+  }
+
+  if(vma->length == 0){
+    fileclose(vma->file);
+    vma->used = 0;
+  }
+  return 0;
+}

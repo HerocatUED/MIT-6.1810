@@ -3,6 +3,7 @@
 #include "memlayout.h"
 #include "riscv.h"
 #include "spinlock.h"
+#include "fcntl.h"
 #include "proc.h"
 #include "defs.h"
 
@@ -320,6 +321,13 @@ fork(void)
 
   acquire(&np->lock);
   np->state = RUNNABLE;
+  for(int i=0; i<MAXVMA; i++){
+    if(p->vma[i].used == 1){
+      memmove(&np->vma[i], &p->vma[i], sizeof(p->vma[i]));
+      filedup(p->vma[i].file);
+    }
+  }
+  
   release(&np->lock);
 
   return pid;
@@ -357,6 +365,17 @@ exit(int status)
       struct file *f = p->ofile[fd];
       fileclose(f);
       p->ofile[fd] = 0;
+    }
+  }
+
+  for(int i=0; i<MAXVMA; i++){
+    if(p->vma[i].used == 1){
+      if(p->vma[i].flags & MAP_SHARED){
+        filewrite(p->vma[i].file, p->vma[i].addr, p->vma[i].length);
+      }
+      fileclose(p->vma[i].file);
+      uvmunmap(p->pagetable, p->vma[i].addr, p->vma[i].length / PGSIZE, 1);
+      p->vma[i].used = 0;
     }
   }
 
@@ -446,12 +465,10 @@ scheduler(void)
 {
   struct proc *p;
   struct cpu *c = mycpu();
-
+  
   c->proc = 0;
   for(;;){
-    // The most recent process to run may have had interrupts
-    // turned off; enable them to avoid a deadlock if all
-    // processes are waiting.
+    // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
 
     for(p = proc; p < &proc[NPROC]; p++) {
@@ -525,11 +542,8 @@ forkret(void)
     // File system initialization must be run in the context of a
     // regular process (e.g., because it calls sleep), and thus cannot
     // be run from main().
-    fsinit(ROOTDEV);
-
     first = 0;
-    // ensure other cores see first=0.
-    __sync_synchronize();
+    fsinit(ROOTDEV);
   }
 
   usertrapret();

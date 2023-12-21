@@ -3,8 +3,13 @@
 #include "memlayout.h"
 #include "riscv.h"
 #include "spinlock.h"
+#include "sleeplock.h"
+#include "fs.h"
+#include "file.h"
+#include "fcntl.h"
 #include "proc.h"
 #include "defs.h"
+
 
 struct spinlock tickslock;
 uint ticks;
@@ -65,6 +70,52 @@ usertrap(void)
     intr_on();
 
     syscall();
+  } else if (r_scause() == 13 || r_scause() == 15){
+
+    uint64 va = r_stval();
+    va = PGROUNDDOWN(va);
+
+    if(va > MAXVA || va > p->sz || va == PGROUNDDOWN(p->trapframe->sp)) p->killed = 1;
+    else{
+      struct vma* vma = 0;
+      for(int i=0; i<MAXVMA; i++){
+        if(p->vma[i].used == 1 && p->vma[i].addr <= va && va < p->vma[i].addr + p->vma[i].length){
+          vma = &(p->vma[i]);
+          break;
+        }
+      }
+
+      if(vma){
+        
+        uint64 offset = va - vma->addr;
+        char* mem = kalloc();
+        int flag = PTE_U;
+        if(mem != 0){
+          memset((void*)mem, 0, PGSIZE);
+          ilock(vma->file->ip);
+          readi(vma->file->ip, 0, (uint64)mem, offset, PGSIZE);
+          iunlock(vma->file->ip);
+          if(vma->prot & PROT_READ) flag |= PTE_R;
+          if(vma->prot & PROT_WRITE) flag |= PTE_W;
+          if(vma->prot & PROT_EXEC) flag |= PTE_X;
+          if(mappages(p->pagetable, va, PGSIZE, (uint64)mem, flag) != 0){
+            kfree((void*)mem);
+            printf("mappages fault!\n");
+            p->killed = 1;
+          }
+        }
+        else{
+          printf("memory allocation fault!\n");
+          p->killed = 1;
+        }
+      }
+      else{
+        printf("cannot find a vma for mmap!\n");
+        p->killed = 1;
+      }
+
+    }
+
   } else if((which_dev = devintr()) != 0){
     // ok
   } else {
@@ -218,4 +269,3 @@ devintr()
     return 0;
   }
 }
-
